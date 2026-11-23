@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block header_actions %}
+  <a href="/invoices/new" class="btn btn-primary">+ חשבונית חדשה</a>
+{% endblock %}
+{% block content %}
+  {% if onboarding %}
+    <section class="card onboarding">
+      <h2>{{ he.ONBOARDING_TITLE }}</h2>
+      <p>{{ he.ONBOARDING_BODY }}</p>
+      <div class="form-actions">
+        <a class="btn btn-secondary" href="/settings#properties">הוספת נכסים</a>
+        <a class="btn btn-secondary" href="/settings#suppliers">הוספת ספקים</a>
+        <a class="btn btn-secondary" href="/settings#categories">הוספת קטגוריות</a>
+        <a class="btn btn-primary" href="/invoices/new">חשבונית ראשונה</a>
+      </div>
+    </section>
+  {% endif %}
+  <section class="empty-state">
+    <div class="empty-icon" aria-hidden="true">✓</div>
+    <h2>{{ he.DASHBOARD_EMPTY_TITLE }}</h2>
+    <p>{{ he.DASHBOARD_EMPTY_BODY }}</p>
+    <a href="/payments" class="btn btn-secondary">לכל התשלומים</a>
+  </section>
+{% endblock %}

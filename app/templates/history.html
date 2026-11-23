@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+  <nav class="tabs" aria-label="תצוגה">
+    <a href="/history?view=payments" class="{{ 'active' if view == 'payments' }}">תשלומים שבוצעו</a>
+    <a href="/history?view=changes" class="{{ 'active' if view == 'changes' }}">יומן שינויים</a>
+    <a href="/payments?tab=paid">חשבונות ששולמו במלואם</a>
+  </nav>
+
+  {% if view == 'payments' %}
+    {% if page.rows %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>תאריך תשלום</th><th>ספק</th><th>נכס</th><th>מס' חשבונית</th><th>סכום</th><th>אמצעי</th><th>אסמכתא</th><th>קבלה</th><th>מצב</th><th></th></tr></thead>
+          <tbody>
+            {% for p in page.rows %}
+              <tr class="{% if p.voided_at %}row-voided{% endif %}">
+                <td>{{ ui.date(p.paid_on) }}</td>
+                <td>{{ ui.text(p.supplier_name) }}</td>
+                <td>{{ ui.text(p.property_name) }}</td>
+                <td>{% if p.invoice_number %}<bdi dir="ltr">{{ p.invoice_number }}</bdi>{% endif %}</td>
+                <td class="amount">{{ ui.money(p.amount_minor, p.currency) }}</td>
+                <td>{{ PAYMENT_METHODS[p.method] }}</td>
+                <td>{% if p.reference %}<bdi dir="ltr">{{ p.reference }}</bdi>{% endif %}</td>
+                <td>{% if p.receipt_count %}🧾{% endif %}</td>
+                <td>
+                  {% if p.voided_at %}<span class="badge badge-canceled">בוטל</span> <span class="small">{{ p.void_reason }}</span>
+                  {% elif p.corrects_entry_id %}<span class="badge">תיקון</span>
+                  {% else %}<span class="badge badge-paid">בוצע</span>{% endif %}
+                  {% if p.obligation_lifecycle == 'canceled' %}<span class="badge">יתרה בוטלה</span>{% endif %}
+                </td>
+                <td>{% if p.invoice_id %}<a class="btn btn-small btn-secondary" href="/invoices/{{ p.invoice_id }}#payments">פתיחה</a>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {{ ui.pagination(page, '/history?view=payments') }}
+    {% else %}
+      <section class="empty-state"><h2>עדיין לא נרשמו תשלומים</h2></section>
+    {% endif %}
+  {% else %}
+    {% if page.rows %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>מועד</th><th>סוג</th><th>פעולה</th><th>פרטים</th><th></th></tr></thead>
+          <tbody>
+            {% for e in page.rows %}
+              <tr>
+                <td><bdi dir="ltr">{{ e.occurred_at | he_datetime }}</bdi></td>
+                <td>{{ ENTITY_TYPES.get(e.entity_type, e.entity_type) }}</td>
+                <td>{{ AUDIT_ACTIONS.get(e.action, e.action) }}</td>
+                <td class="small">{{ e.details or '' }}</td>
+                <td>{% if e.invoice_id %}<a class="btn btn-small btn-secondary" href="/invoices/{{ e.invoice_id }}">פתיחה</a>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {{ ui.pagination(page, '/history?view=changes') }}
+    {% else %}
+      <section class="empty-state"><h2>היומן ריק</h2></section>
+    {% endif %}
+  {% endif %}
+{% endblock %}

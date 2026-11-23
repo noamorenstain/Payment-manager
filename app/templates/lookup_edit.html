@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+  <section class="card narrow">
+    {{ ui.error_summary(errors) }}
+    {% if usage %}<p class="muted">הפריט משמש ב-{{ usage }} רשומות. שינוי השם יוצג גם בהן; הרשומות עצמן אינן משתנות.</p>{% endif %}
+    <form method="post" action="/settings/{{ kind }}/{{ item.id }}/edit" class="form-grid">
+      {{ ui.csrf_field() }}
+      {% call ui.field('name', labels['name'], errors=errors, required=True) %}{{ ui.input('name', values, required=True) }}{% endcall %}
+      {% for f in spec.fields %}
+        {% call ui.field(f, labels[f], errors=errors) %}{{ ui.input(f, values) }}{% endcall %}
+      {% endfor %}
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">שמירה</button>
+        <a class="btn btn-secondary" href="/settings#{{ kind }}">ביטול</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

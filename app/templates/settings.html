@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+  <p class="lead">ניהול נכסים, ספקים וקטגוריות. העברה לארכיון מסתירה פריט מרשימות הבחירה בלבד – כל החשבוניות, התשלומים והמסמכים הקשורים אליו נשמרים וממשיכים להופיע.</p>
+
+  {% for kind in kinds %}
+    {% set spec = specs[kind] %}
+    {% set errs = errors.get(kind, {}) %}
+    {% set vals = values.get(kind, {}) %}
+    <section class="card" id="{{ kind }}">
+      <h2>{{ he.LOOKUP_TITLES[kind] }}</h2>
+      {% if errs.get('_form') %}{{ ui.alert('danger', errs['_form']) }}{% endif %}
+
+      {% if items[kind] %}
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr>
+              <th>{{ labels['name'] }}</th>
+              {% for f in spec.fields %}<th>{{ labels[f] }}</th>{% endfor %}
+              <th>רשומות</th><th>מצב</th><th>פעולות</th>
+            </tr></thead>
+            <tbody>
+              {% for item in items[kind] %}
+                <tr class="{% if item.archived_at %}row-archived{% endif %}">
+                  <td>{{ ui.text(item.name) }}{% if item.get('is_general') %} <span class="badge">מערכת</span>{% endif %}</td>
+                  {% for f in spec.fields %}<td>{{ ui.text(item[f]) }}</td>{% endfor %}
+                  <td class="num">{{ item.usage }}</td>
+                  <td>{% if item.archived_at %}<span class="badge badge-canceled">{{ he.ARCHIVED_LABEL }}</span>{% else %}<span class="badge badge-paid">פעיל</span>{% endif %}</td>
+                  <td class="actions">
+                    {% if not item.get('is_general') %}
+                      <a class="btn btn-small btn-secondary" href="/settings/{{ kind }}/{{ item.id }}/edit">עריכה</a>
+                      <form method="post" action="/settings/{{ kind }}/{{ item.id }}/{{ 'unarchive' if item.archived_at else 'archive' }}" class="inline">
+                        {{ ui.csrf_field() }}
+                        <button class="btn btn-small btn-secondary" type="submit">{{ 'שחזור' if item.archived_at else 'העברה לארכיון' }}</button>
+                      </form>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">עדיין לא נוספו {{ he.LOOKUP_TITLES[kind] }}.</p>
+      {% endif %}
+
+      <details class="add-form" {% if open_kind == kind %}open{% endif %}>
+        <summary>+ הוספת {{ he.LOOKUP_SINGULAR[kind] }}</summary>
+        <form method="post" action="/settings/{{ kind }}" class="form-grid">
+          {{ ui.csrf_field() }}
+          {% call ui.field('name', labels['name'], errors=errs, required=True) %}{{ ui.input('name', vals, required=True) }}{% endcall %}
+          {% for f in spec.fields %}
+            {% call ui.field(f, labels[f], errors=errs) %}{{ ui.input(f, vals) }}{% endcall %}
+          {% endfor %}
+          <div class="form-actions"><button class="btn btn-primary" type="submit">הוספה</button></div>
+        </form>
+      </details>
+    </section>
+  {% endfor %}
+{% endblock %}

@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% block heading %}<bdi>{{ invoice.supplier_name }}</bdi>{% if invoice.invoice_number %} <span class="muted">· חשבונית <bdi dir="ltr">{{ invoice.invoice_number }}</bdi></span>{% endif %}{% endblock %}
+
+{% block header_actions %}
+  <a class="btn btn-secondary" href="/invoices/{{ invoice.id }}/edit">עריכת פרטים</a>
+  <button type="button" class="btn btn-secondary" data-open="dlg-document">צירוף מסמך</button>
+  {% if any_open %}<button type="button" class="btn btn-danger-outline" data-open="dlg-cancel-invoice">ביטול יתרה</button>{% endif %}
+{% endblock %}
+
+{% block content %}
+  {% set cur = invoice.currency %}
+  {% macro dialog_errors(name, match=True) -%}
+    {% if dialog.get('name') == name and match %}{{ ui.error_summary(dialog.get('errors')) }}{% endif %}
+  {%- endmacro %}
+  {% macro dval(name, field, default='', match=True) -%}
+    {%- if dialog.get('name') == name and match and dialog.get('values') -%}{{ dialog['values'].get(field, '') }}{%- else -%}{{ default }}{%- endif -%}
+  {%- endmacro %}
+  {% macro auto_open(name, match=True) -%}{% if dialog.get('name') == name and match %}data-auto-open{% endif %}{%- endmacro %}
+
+  {# ------------------------------------------------------------ summary #}
+  <section class="card summary-card">
+    <div class="summary-head">
+      <span class="badge badge-{{ summary.state | replace('_', '-') }}">{{ INVOICE_STATES[summary.state] }}</span>
+      {% if invoice.canceled_at %}<span class="muted">בוטל: {{ invoice.cancel_reason }}</span>{% endif %}
+    </div>
+    <dl class="figures">
+      <div><dt>סכום החשבונית</dt><dd>{{ ui.money(invoice.total_minor, cur) }}</dd></div>
+      <div><dt>שולם</dt><dd class="fig-paid">{{ ui.money(summary.paid_minor, cur) }}</dd></div>
+      {% if summary.canceled_minor %}<div><dt>בוטל</dt><dd class="fig-canceled">{{ ui.money(summary.canceled_minor, cur) }}</dd></div>{% endif %}
+      <div><dt>יתרה לתשלום</dt><dd class="fig-outstanding">{% if summary.outstanding_minor is none %}{{ he.UNKNOWN_AMOUNT }}{% else %}{{ ui.money(summary.outstanding_minor, cur) }}{% endif %}</dd></div>
+    </dl>
+    {% if invoice.total_minor %}
+      {% set t = invoice.total_minor %}
+      {% set w_paid = (summary.paid_minor / t * 1000) | round | int %}
+      {% set w_cancel = ((summary.canceled_minor or 0) / t * 1000) | round | int %}
+      <svg class="breakdown" viewBox="0 0 1000 14" preserveAspectRatio="none" role="img"
+           aria-label="שולם {{ (summary.paid_minor / t * 100) | round(1) }}%">
+        <rect class="bd-rest" x="0" y="0" width="1000" height="14"></rect>
+        <rect class="bd-paid" x="{{ 1000 - w_paid }}" y="0" width="{{ w_paid }}" height="14"></rect>
+        <rect class="bd-canceled" x="{{ 1000 - w_paid - w_cancel }}" y="0" width="{{ w_cancel }}" height="14"></rect>
+      </svg>
+    {% endif %}
+  </section>
+
+  <div class="two-col">
+    {# ------------------------------------------------------------ details #}
+    <section class="card">
+      <h2>פרטים</h2>
+      <dl class="details">
+        <dt>ספק</dt><dd>{{ ui.text(invoice.supplier_name) }}{% if invoice.supplier_archived %} <span class="badge">{{ he.ARCHIVED_LABEL }}</span>{% endif %}</dd>
+        <dt>נכס</dt><dd>{{ ui.text(invoice.property_name) }}{% if invoice.property_country %} ({{ invoice.property_country }}){% endif %}</dd>
+        <dt>קטגוריה</dt><dd>{{ invoice.category_name or '—' }}</dd>
+        <dt>מספר חשבונית</dt><dd>{% if invoice.invoice_number %}<bdi dir="ltr">{{ invoice.invoice_number }}</bdi>{% else %}—{% endif %}</dd>
+        <dt>מטבע</dt><dd>{{ cur }}</dd>
+        <dt>תאריך הנפקה</dt><dd>{{ ui.date(invoice.issue_date) or '—' }}</dd>
+        <dt>תאריך קבלה</dt><dd>{{ ui.date(invoice.received_date) or '—' }}</dd>
+        <dt>נוצר</dt><dd><bdi dir="ltr">{{ invoice.created_at | he_datetime }}</bdi></dd>
+        {% if invoice.notes %}<dt>הערות</dt><dd class="pre">{{ invoice.notes }}</dd>{% endif %}
+      </dl>
+    </section>
+
+    {# ------------------------------------------------------------ documents #}
+    <section class="card" id="documents">
+      <h2>מסמכים</h2>
+      {% set current_docs = invoice_documents | selectattr('superseded_by', 'none') | list %}
+      {% set old_docs = invoice_documents | rejectattr('superseded_by', 'none') | list %}
+      {% if current_docs %}
+        <ul class="doc-list">
+          {% for doc in current_docs %}
+            <li>
+              <a href="/attachments/{{ doc.id }}" target="_blank" rel="noopener">📄 <bdi>{{ doc.original_name }}</bdi></a>
+              <span class="muted num">{{ (doc.size_bytes / 1024) | round(0, 'ceil') | int }} KB ·<bdi dir="ltr">{{ doc.created_at | he_datetime }}</bdi></span>
+              <button type="button" class="btn btn-small btn-secondary" data-open="dlg-document" data-replaces="{{ doc.id }}" data-replaces-name="{{ doc.original_name }}">החלפה</button>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">לא צורף מסמך. ניתן לצרף בכל עת.</p>
+      {% endif %}
+      {% if old_docs %}
+        <details><summary>גרסאות קודמות ({{ old_docs | length }})</summary>
+          <ul class="doc-list">{% for doc in old_docs %}<li><a href="/attachments/{{ doc.id }}" target="_blank" rel="noopener"><bdi>{{ doc.original_name }}</bdi></a> <span class="muted">(הוחלף)</span></li>{% endfor %}</ul>
+        </details>
+      {% endif %}
+    </section>
+  </div>
+
+  {# ------------------------------------------------------------ obligations #}
+  <section class="card">
+    <h2>מועדי תשלום</h2>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>סכום</th><th>שולם</th><th>יתרה</th><th>מועד מקורי</th><th>מועד נוכחי</th><th>מצב</th><th>פעולות</th></tr></thead>
+        <tbody>
+          {% for ob in obligations %}
+            <tr id="ob-{{ ob.id }}">
+              <td class="amount">{{ ui.money(ob.amount_minor, cur) }}</td>
+              <td class="amount">{{ ui.money(ob.paid_minor, cur) }}</td>
+              <td class="amount">
+                {% if ob.lifecycle == 'canceled' %}<span class="muted">בוטל {{ ui.money(ob.canceled_minor, cur) if ob.canceled_minor is not none else he.UNKNOWN_AMOUNT }}</span>
+                {% elif ob.lifecycle == 'restructured' %}<span class="muted">הועבר {{ ui.money(ob.transferred_minor, cur) }}</span>
+                {% elif ob.amount_minor is none %}—
+                {% else %}{{ ui.money(ob.outstanding_minor, cur) }}{% endif %}
+              </td>
+              <td>{{ ui.date(ob.original_due_date) }}</td>
+              <td>{{ ui.date(ob.current_due_date) }}{% if ob.current_due_date != ob.original_due_date %} <span class="badge">נדחה</span>{% endif %}</td>
+              <td>
+                {{ ui.state_badge(ob.primary_state) }}
+                {% if ob.lifecycle == 'canceled' and ob.paid_minor %}<span class="badge badge-partial">{{ he.CANCELED_AFTER_PARTIAL }}</span>{% endif %}
+                {% if ob.lifecycle == 'canceled' %}<div class="muted small">{{ ob.close_reason }}</div>{% endif %}
+              </td>
+              <td class="actions">
+                {% if ob.lifecycle == 'active' and ob.outstanding_minor %}
+                  <button type="button" class="btn btn-small btn-primary" data-open="dlg-pay-{{ ob.id }}">רישום תשלום</button>
+                  <button type="button" class="btn btn-small btn-secondary" data-open="dlg-postpone-{{ ob.id }}">דחייה</button>
+                  <button type="button" class="btn btn-small btn-secondary" data-open="dlg-cancel-ob-{{ ob.id }}">ביטול</button>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {# ------------------------------------------------------------ payments #}
+  <section class="card" id="payments">
+    <h2>תשלומים שבוצעו</h2>
+    {% if payments %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>תאריך תשלום</th><th>סכום</th><th>אמצעי</th><th>אסמכתא</th><th>קבלות</th><th>הערות</th><th>פעולות</th></tr></thead>
+          <tbody>
+            {% for p in payments %}
+              <tr class="{% if p.voided_at %}row-voided{% endif %}">
+                <td>{{ ui.date(p.paid_on) }}</td>
+                <td class="amount">{{ ui.money(p.amount_minor, cur) }}</td>
+                <td>{{ PAYMENT_METHODS[p.method] }}</td>
+                <td>{% if p.reference %}<bdi dir="ltr">{{ p.reference }}</bdi>{% else %}—{% endif %}</td>
+                <td>
+                  {% for r in receipts_by_entry.get(p.id, []) if r.superseded_by is none %}
+                    <a href="/attachments/{{ r.id }}" target="_blank" rel="noopener">🧾 <bdi>{{ r.original_name }}</bdi></a><br>
+                  {% endfor %}
+                  {% if not p.voided_at %}<button type="button" class="btn btn-link" data-open="dlg-receipt-{{ p.id }}">+ קבלה</button>{% endif %}
+                </td>
+                <td>
+                  {% if p.voided_at %}<span class="badge badge-canceled">בוטל</span> {{ p.void_reason }}{% endif %}
+                  {% if p.corrects_entry_id %}<span class="badge">תיקון</span>{% endif %}
+                  {{ p.notes or '' }}
+                </td>
+                <td class="actions">{% if not p.voided_at %}<button type="button" class="btn btn-small btn-secondary" data-open="dlg-void-{{ p.id }}">ביטול / תיקון</button>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">טרם נרשמו תשלומים.</p>
+    {% endif %}
+  </section>
+
+  {# ------------------------------------------------------------ postponements & reminders #}
+  {% if postponements %}
+    <section class="card">
+      <h2>היסטוריית מועדים</h2>
+      <table class="data">
+        <thead><tr><th>מתאריך</th><th>לתאריך</th><th>סיבה</th><th>תזכורות ידניות</th><th>בוצע</th></tr></thead>
+        <tbody>
+          {% for pp in postponements %}
+            <tr>
+              <td>{{ ui.date(pp.old_due_date) }}</td>
+              <td>{{ ui.date(pp.new_due_date) }} {% if pp.new_due_date < pp.old_due_date %}<span class="badge">הוקדם</span>{% endif %}</td>
+              <td>{{ pp.reason or '—' }}</td>
+              <td>{{ 'הוזזו' if pp.moved_manual_reminders else 'ללא שינוי' }}</td>
+              <td><bdi dir="ltr">{{ pp.created_at | he_datetime }}</bdi></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+
+  {# ------------------------------------------------------------ audit #}
+  <section class="card">
+    <h2>יומן שינויים</h2>
+    <ol class="timeline">
+      {% for e in audit %}
+        <li>
+          <bdi dir="ltr" class="muted">{{ e.occurred_at | he_datetime }}</bdi>
+          <strong>{{ ENTITY_TYPES.get(e.entity_type, e.entity_type) }}: {{ AUDIT_ACTIONS.get(e.action, e.action) }}</strong>
+          {% if e.details %}<span>– {{ e.details }}</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  {# ============================================================ dialogs #}
+  {% for ob in obligations if ob.lifecycle == 'active' and ob.outstanding_minor %}
+    {% set m = dialog.get('obligation_id') == ob.id %}
+    <dialog id="dlg-pay-{{ ob.id }}" {{ auto_open('pay', m) }}>
+      <form method="post" action="/obligations/{{ ob.id }}/payments" enctype="multipart/form-data" novalidate>
+        {{ ui.csrf_field() }}
+        <input type="hidden" name="request_token" value="{{ dval('pay', 'request_token', new_token(), m) }}">
+        <div class="dialog-head">רישום תשלום · יתרה {{ ui.money(ob.outstanding_minor, cur) }}</div>
+        <div class="dialog-body">
+          {{ dialog_errors('pay', m) }}
+          {% set errs = dialog.get('errors', {}) if m else {} %}
+          <div class="form-grid">
+            {% call ui.field('amount', 'סכום ששולם', errors=errs, required=True) %}
+              <input type="text" id="f-amount" name="amount" class="ltr-input" inputmode="decimal" value="{{ dval('pay', 'amount', to_input(ob.outstanding_minor), m) }}">
+            {% endcall %}
+            {% call ui.field('paid_on', 'תאריך תשלום', errors=errs, required=True) %}{{ ui.date_input('paid_on', dval('pay', 'paid_on', today_he, m)) }}{% endcall %}
+            {% call ui.field('method', 'אמצעי תשלום', errors=errs, required=True) %}
+              <select id="f-method" name="method">
+                {% set chosen = dval('pay', 'method', 'bank_transfer', m) %}
+                {% for key, label in PAYMENT_METHODS.items() %}<option value="{{ key }}" {% if chosen == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select>
+            {% endcall %}
+            {% call ui.field('reference', 'אסמכתא / מספר עסקה (רשות)', errors=errs) %}
+              <input type="text" id="f-reference" name="reference" class="ltr-input" value="{{ dval('pay', 'reference', '', m) }}">
+            {% endcall %}
+          </div>
+          {% call ui.field('notes', 'הערות (רשות)', errors=errs) %}<input type="text" id="f-notes" name="notes" value="{{ dval('pay', 'notes', '', m) }}">{% endcall %}
+          {{ ui.file_field(dialog.get('staged') if m else None, accept, label='קבלה / אישור תשלום (רשות)', errors=errs) }}
+        </div>
+        <div class="dialog-foot">
+          <button class="btn btn-primary" type="submit">שמירת תשלום</button>
+          <button class="btn btn-secondary" type="button" data-close>סגירה</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="dlg-postpone-{{ ob.id }}" {{ auto_open('postpone', m) }}>
+      <form method="post" action="/obligations/{{ ob.id }}/postpone" novalidate>
+        {{ ui.csrf_field() }}
+        <div class="dialog-head">דחיית מועד · מועד נוכחי {{ ui.date(ob.current_due_date) }}</div>
+        <div class="dialog-body">
+          {{ dialog_errors('postpone', m) }}
+          {% set errs = dialog.get('errors', {}) if m else {} %}
+          {% call ui.field('new_due_date', 'מועד חדש', errors=errs, required=True) %}{{ ui.date_input('new_due_date', dval('postpone', 'new_due_date', '', m)) }}{% endcall %}
+          {% call ui.field('reason', 'סיבה (רשות)', errors=errs) %}<input type="text" id="f-reason" name="reason" value="{{ dval('postpone', 'reason', '', m) }}">{% endcall %}
+          {% set pending = reminders | selectattr('obligation_id', 'equalto', ob.id) | selectattr('status', 'equalto', 'pending') | list %}
+          {% if pending %}
+            <label class="check"><input type="checkbox" name="move_reminders" value="1"> הזז גם תזכורות ידניות באותו מספר ימים ({{ pending | length }})</label>
+          {% endif %}
+          <p class="muted small">התזכורת האוטומטית תחושב מחדש לפי המועד החדש. התשלומים שכבר בוצעו אינם משתנים.</p>
+        </div>
+        <div class="dialog-foot">
+          <button class="btn btn-primary" type="submit">דחיית מועד</button>
+          <button class="btn btn-secondary" type="button" data-close>סגירה</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="dlg-cancel-ob-{{ ob.id }}" {{ auto_open('cancel-obligation', m) }}>
+      <form method="post" action="/obligations/{{ ob.id }}/cancel" novalidate data-confirm="לבטל את היתרה הפתוחה? התשלומים שכבר בוצעו יישמרו.">
+        {{ ui.csrf_field() }}
+        <div class="dialog-head">ביטול יתרה · {{ ui.money(ob.outstanding_minor, cur) }}</div>
+        <div class="dialog-body">
+          {{ dialog_errors('cancel-obligation', m) }}
+          <p>היתרה שטרם שולמה תסומן כמבוטלת. תשלומים שבוצעו נשמרים, ושום נתון אינו נמחק.</p>
+          {% call ui.field('reason', 'סיבת ביטול', errors=dialog.get('errors', {}) if m else {}, required=True) %}<input type="text" id="f-cancel-reason" name="reason" value="{{ dval('cancel-obligation', 'reason', '', m) }}">{% endcall %}
+        </div>
+        <div class="dialog-foot">
+          <button class="btn btn-danger" type="submit">ביטול היתרה</button>
+          <button class="btn btn-secondary" type="button" data-close>סגירה</button>
+        </div>
+      </form>
+    </dialog>
+  {% endfor %}
+
+  {% for p in payments if not p.voided_at %}
+    {% set m = dialog.get('entry_id') == p.id %}
+    <dialog id="dlg-void-{{ p.id }}" {{ auto_open('void', m) }}>
+      <form method="post" action="/payment-entries/{{ p.id }}/void" novalidate data-confirm="לבטל את התשלום? הרישום יישמר בהיסטוריה כמבוטל.">
+        {{ ui.csrf_field() }}
+        <input type="hidden" name="request_token" value="{{ dval('void', 'request_token', new_token(), m) }}">
+        <div class="dialog-head">ביטול / תיקון תשלום · {{ ui.money(p.amount_minor, cur) }} מ-{{ ui.date(p.paid_on) }}</div>
+        <div class="dialog-body">
+          {{ dialog_errors('void', m) }}
+          {% set errs = dialog.get('errors', {}) if m else {} %}
+          <p>התשלום לא יימחק: הוא יסומן כמבוטל ויישאר בהיסטוריה עם הסיבה.</p>
+          {% call ui.field('void_reason', 'סיבת הביטול', errors=errs, required=True) %}<input type="text" id="f-void_reason" name="void_reason" value="{{ dval('void', 'void_reason', '', m) }}">{% endcall %}
+          <label class="check"><input type="checkbox" name="correct" value="1" data-toggle="corr-{{ p.id }}" {% if dval('void', 'correct', '', m) %}checked{% endif %}> רישום תשלום מתוקן במקומו</label>
+          <fieldset id="corr-{{ p.id }}" class="form-grid">
+            {% call ui.field('amount', 'סכום מתוקן', errors=errs) %}<input type="text" name="amount" class="ltr-input" inputmode="decimal" value="{{ dval('void', 'amount', to_input(p.amount_minor), m) }}">{% endcall %}
+            {% call ui.field('paid_on', 'תאריך תשלום', errors=errs) %}{{ ui.date_input('paid_on', dval('void', 'paid_on', p.paid_on | he_date, m)) }}{% endcall %}
+            {% call ui.field('method', 'אמצעי תשלום', errors=errs) %}
+              <select name="method">{% set chosen = dval('void', 'method', p.method, m) %}{% for key, label in PAYMENT_METHODS.items() %}<option value="{{ key }}" {% if chosen == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+            {% endcall %}
+            {% call ui.field('reference', 'אסמכתא', errors=errs) %}<input type="text" name="reference" class="ltr-input" value="{{ dval('void', 'reference', p.reference or '', m) }}">{% endcall %}
+          </fieldset>
+        </div>
+        <div class="dialog-foot">
+          <button class="btn btn-danger" type="submit">ביטול התשלום</button>
+          <button class="btn btn-secondary" type="button" data-close>סגירה</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="dlg-receipt-{{ p.id }}" {{ auto_open('receipt', m) }}>
+      <form method="post" action="/payment-entries/{{ p.id }}/receipts" enctype="multipart/form-data" novalidate>
+        {{ ui.csrf_field() }}
+        <div class="dialog-head">צירוף קבלה לתשלום מ-{{ ui.date(p.paid_on) }}</div>
+        <div class="dialog-body">
+          {{ dialog_errors('receipt', m) }}
+          {{ ui.file_field(None, accept, label='קבלה / אישור תשלום', errors=dialog.get('errors', {}) if m else {}) }}
+        </div>
+        <div class="dialog-foot">
+          <button class="btn btn-primary" type="submit">צירוף</button>
+          <button class="btn btn-secondary" type="button" data-close>סגירה</button>
+        </div>
+      </form>
+    </dialog>
+  {% endfor %}
+
+  <dialog id="dlg-document" {{ auto_open('document') }}>
+    <form method="post" action="/invoices/{{ invoice.id }}/documents" enctype="multipart/form-data" novalidate>
+      {{ ui.csrf_field() }}
+      <input type="hidden" name="replaces_id" value="{{ dval('document', 'replaces_id') }}" data-replaces-target>
+      <div class="dialog-head">צירוף מסמך חשבונית <span class="muted" data-replaces-label></span></div>
+      <div class="dialog-body">
+        {{ dialog_errors('document') }}
+        {{ ui.file_field(None, accept, errors=dialog.get('errors', {}) if dialog.get('name') == 'document' else {}) }}
+        <p class="muted small">הקובץ נשמר כפי שהוא. בהחלפה – הגרסה הקודמת נשמרת ונשארת זמינה.</p>
+      </div>
+      <div class="dialog-foot">
+        <button class="btn btn-primary" type="submit">שמירה</button>
+        <button class="btn btn-secondary" type="button" data-close>סגירה</button>
+      </div>
+    </form>
+  </dialog>
+
+  {% if any_open %}
+    <dialog id="dlg-cancel-invoice" {{ auto_open('cancel-invoice') }}>
+      <form method="post" action="/invoices/{{ invoice.id }}/cancel" novalidate data-confirm="לבטל את כל היתרה הפתוחה של החשבונית? התשלומים שבוצעו יישמרו.">
+        {{ ui.csrf_field() }}
+        <div class="dialog-head">ביטול יתרת החשבונית</div>
+        <div class="dialog-body">
+          {{ dialog_errors('cancel-invoice') }}
+          <p>כל היתרות הפתוחות יסומנו כמבוטלות. תשלומים שבוצעו נשמרים, ושום נתון אינו נמחק.</p>
+          {% call ui.field('reason', 'סיבת ביטול', errors=dialog.get('errors', {}) if dialog.get('name') == 'cancel-invoice' else {}, required=True) %}
+            <input type="text" id="f-inv-cancel-reason" name="reason" value="{{ dval('cancel-invoice', 'reason') }}">
+          {% endcall %}
+        </div>
+        <div class="dialog-foot">
+          <button class="btn btn-danger" type="submit">ביטול היתרה</button>
+          <button class="btn btn-secondary" type="button" data-close>סגירה</button>
+        </div>
+      </form>
+    </dialog>
+  {% endif %}
+{% endblock %}

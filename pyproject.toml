@@ -1,0 +1,10 @@
+[project]
+name = "payment-manager"
+version = "0.1.0"
+description = "Local, offline, single-user payment manager with a Hebrew RTL web interface"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]

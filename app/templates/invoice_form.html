@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+  <form method="post" enctype="multipart/form-data" class="card invoice-form" novalidate
+        action="{{ '/invoices/new' if mode == 'new' else '/invoices/' ~ invoice.id ~ '/edit' }}">
+    {{ ui.csrf_field() }}
+    {% if mode == 'new' %}<input type="hidden" name="request_token" value="{{ values.get('request_token', '') }}">{% endif %}
+    {{ ui.error_summary(errors) }}
+    {{ ui.confirm_warnings(warnings) }}
+
+    <h2>פרטי החיוב</h2>
+    <div class="form-grid">
+      {% call ui.field('supplier', 'ספק', errors=errors, required=True, hint=he.NEW_SUPPLIER_HINT) %}
+        <input type="text" id="f-supplier" name="supplier" list="supplier-list" autocomplete="off" required
+               value="{{ values.get('supplier', '') }}">
+        <datalist id="supplier-list">
+          {% for s in suppliers %}<option value="{{ s.name }}"></option>{% endfor %}
+        </datalist>
+      {% endcall %}
+
+      {% call ui.field('property_id', 'נכס', errors=errors, required=True) %}
+        <select id="f-property_id" name="property_id" required>
+          {% for p in properties %}
+            <option value="{{ p.id }}" {% if values.get('property_id') == p.id|string %}selected{% endif %}>
+              {{ p.name }}{% if p.country %} ({{ p.country }}){% endif %}{% if p.archived_at %} – {{ he.ARCHIVED_LABEL }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      {% endcall %}
+
+      {% call ui.field('category_id', 'קטגוריה', errors=errors) %}
+        <select id="f-category_id" name="category_id">
+          <option value="">— ללא —</option>
+          {% for c in categories %}
+            <option value="{{ c.id }}" {% if values.get('category_id') == c.id|string %}selected{% endif %}>{{ c.name }}{% if c.archived_at %} – {{ he.ARCHIVED_LABEL }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      {% endcall %}
+
+      {% call ui.field('invoice_number', 'מספר חשבונית', errors=errors) %}{{ ui.input('invoice_number', values, ltr=True) }}{% endcall %}
+    </div>
+
+    <h2>סכום ומועד</h2>
+    {% if mode == 'edit' and not single_obligation %}
+      <p class="muted">הסכום והמועד אינם ניתנים לעריכה כאן משום שההתחייבות סגורה או מחולקת לכמה תשלומים. ניתן לנהל אותם מעמוד החשבונית.</p>
+    {% else %}
+      <div class="form-grid">
+        {% call ui.field('amount', 'סכום', errors=errors, required=True,
+                         hint=('לא ניתן להוריד מתחת לסכום ששולם (' ~ (single_obligation.paid_minor | money(invoice.currency)) ~ ')') if mode == 'edit' and single_obligation.paid_minor else None) %}
+          {{ ui.input('amount', values, required=True, ltr=True, extra='inputmode="decimal" placeholder="0.00"') }}
+        {% endcall %}
+
+        {% call ui.field('currency', 'מטבע', errors=errors, required=True,
+                         hint='לא ניתן לשנות מטבע לאחר יצירה' if mode == 'edit' else None) %}
+          {% if mode == 'new' %}
+            <select id="f-currency" name="currency" required>
+              {% for c in currencies %}
+                <option value="{{ c.code }}" {% if values.get('currency') == c.code %}selected{% endif %}>{{ c.symbol }} {{ c.name_he }} ({{ c.code }})</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="text" id="f-currency" value="{{ invoice.currency }}" disabled class="ltr-input">
+          {% endif %}
+        {% endcall %}
+
+        {% call ui.field('due_date', 'מועד תשלום', errors=errors, required=True) %}{{ ui.date_input('due_date', values.get('due_date'), required=True) }}{% endcall %}
+
+        {% if mode == 'edit' %}
+          {% call ui.field('due_change_reason', 'סיבת שינוי מועד (אם שונה)', errors=errors) %}{{ ui.input('due_change_reason', values) }}{% endcall %}
+        {% endif %}
+
+        {% call ui.field('reminder_lead_days', 'תזכורת – ימים לפני המועד', errors=errors, hint='ריק = ברירת המחדל (7 ימים)') %}
+          {{ ui.input('reminder_lead_days', values, ltr=True, extra='inputmode="numeric" placeholder="7"') }}
+        {% endcall %}
+      </div>
+    {% endif %}
+
+    <h2>פרטים נוספים</h2>
+    <div class="form-grid">
+      {% call ui.field('issue_date', 'תאריך הנפקה', errors=errors) %}{{ ui.date_input('issue_date', values.get('issue_date')) }}{% endcall %}
+      {% call ui.field('received_date', 'תאריך קבלה', errors=errors) %}{{ ui.date_input('received_date', values.get('received_date')) }}{% endcall %}
+    </div>
+    {% call ui.field('notes', 'הערות', errors=errors) %}<textarea id="f-notes" name="notes">{{ values.get('notes', '') }}</textarea>{% endcall %}
+
+    {% if mode == 'new' %}
+      <h2>מסמך החשבונית</h2>
+      <p class="muted">אופציונלי – אפשר לצרף את הקובץ גם מאוחר יותר.</p>
+      {{ ui.file_field(staged, accept, errors=errors) }}
+    {% endif %}
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">{{ 'שמירת חשבונית' if mode == 'new' else 'שמירת שינויים' }}</button>
+      <a class="btn btn-secondary" href="{{ '/' if mode == 'new' else '/invoices/' ~ invoice.id }}">ביטול</a>
+    </div>
+  </form>
+{% endblock %}

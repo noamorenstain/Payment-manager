@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="empty-state">
+    <div class="empty-icon danger" aria-hidden="true">!</div>
+    <h2>{{ error_title }}</h2>
+    <p>{{ error_body }}</p>
+    <a href="/" class="btn btn-secondary">{{ he.BACK_TO_DASHBOARD }}</a>
+  </section>
+{% endblock %}

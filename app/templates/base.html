@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{{ page_title }} · {{ he.APP_TITLE }}</title>
+  <link rel="icon" href="/static/img/icon.ico">
+  <link rel="stylesheet" href="/static/css/app.css?v={{ static_v }}">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" aria-label="ניווט ראשי">
+      <div class="brand">
+        <img src="/static/img/icon.png" alt="" width="32" height="32">
+        <span>{{ he.APP_TITLE }}</span>
+      </div>
+
+      <nav class="nav">
+        {% for path, label in nav_items %}
+          {% set active = (current_path == path) or (path != '/' and current_path.startswith(path)) %}
+          {% if path == '/invoices/new' %}
+            <a href="{{ path }}" class="nav-primary{% if active %} active{% endif %}"{% if active %} aria-current="page"{% endif %}>
+              <span class="nav-icon" aria-hidden="true">+</span>{{ label }}
+            </a>
+          {% else %}
+            <a href="{{ path }}" class="nav-link{% if active %} active{% endif %}"{% if active %} aria-current="page"{% endif %}>{{ label }}</a>
+          {% endif %}
+        {% endfor %}
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="meta-row">
+          <span class="meta-label">{{ he.TODAY_LABEL }}</span>
+          <span>{{ today_weekday }}, <bdi dir="ltr">{{ today | he_date }}</bdi></span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">{{ he.LAST_BACKUP_LABEL }}</span>
+          <span>{% if last_backup %}<bdi dir="ltr">{{ last_backup }}</bdi>{% else %}{{ he.NO_BACKUP_YET }}{% endif %}</span>
+        </div>
+        <div class="version"><bdi dir="ltr">v{{ version }}</bdi></div>
+      </div>
+    </aside>
+
+    <main class="content">
+      {% if integrity_issues %}
+        <div class="banner banner-danger" role="alert">
+          <strong>{{ he.INTEGRITY_BANNER_TITLE }}</strong>
+          <ul>{% for issue in integrity_issues %}<li>{{ issue.message }}</li>{% endfor %}</ul>
+          <p>{{ he.INTEGRITY_BANNER_BODY }}</p>
+        </div>
+      {% endif %}
+      <header class="page-header">
+        <h1>{% block heading %}{{ page_title }}{% endblock %}</h1>
+        <div class="header-actions">{% block header_actions %}{% endblock %}</div>
+      </header>
+      {% if flash %}<div class="alert alert-success" role="status">{{ flash }}</div>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <script src="/static/js/app.js?v={{ static_v }}" defer></script>
+</body>
+</html>

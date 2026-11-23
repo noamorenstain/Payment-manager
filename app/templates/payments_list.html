@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block header_actions %}<a href="/invoices/new" class="btn btn-primary">+ חשבונית חדשה</a>{% endblock %}
+{% block content %}
+  <nav class="tabs" aria-label="סינון">
+    <a href="/payments?tab=open" class="{{ 'active' if tab == 'open' }}" {% if tab == 'open' %}aria-current="page"{% endif %}>פתוחים ({{ counts.open }})</a>
+    <a href="/payments?tab=paid" class="{{ 'active' if tab == 'paid' }}" {% if tab == 'paid' %}aria-current="page"{% endif %}>שולמו ({{ counts.paid }})</a>
+    <a href="/payments?tab=all" class="{{ 'active' if tab == 'all' }}" {% if tab == 'all' %}aria-current="page"{% endif %}>הכל ({{ counts.all }})</a>
+  </nav>
+
+  {% if page.rows %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr>
+          <th>ספק</th><th>נכס</th><th>מס' חשבונית</th><th>קטגוריה</th><th>סכום</th><th>יתרה</th>
+          <th>{{ 'תשלום אחרון' if tab == 'paid' else 'מועד' }}</th><th>מצב</th><th title="מסמך מצורף">📎</th><th></th>
+        </tr></thead>
+        <tbody>
+          {% for r in page.rows %}
+            <tr>
+              <td>{{ ui.text(r.supplier_name) }}</td>
+              <td>{{ ui.text(r.property_name) }}</td>
+              <td>{% if r.invoice_number %}<bdi dir="ltr">{{ r.invoice_number }}</bdi>{% endif %}</td>
+              <td>{{ r.category_name or '' }}</td>
+              <td class="amount">{{ ui.money(r.amount_minor, r.currency) }}</td>
+              <td class="amount">{% if r.lifecycle == 'active' and r.amount_minor is not none %}{{ ui.money(r.outstanding_minor, r.currency) }}{% endif %}</td>
+              <td>{{ ui.date(r.last_paid_on if tab == 'paid' else r.current_due_date) }}</td>
+              <td>{{ ui.state_badge(r.primary_state) }}</td>
+              <td>{% if r.doc_count %}<span title="{{ r.doc_count }} מסמכים">📎</span>{% endif %}</td>
+              <td><a class="btn btn-small btn-secondary" href="/invoices/{{ r.invoice_id }}#ob-{{ r.obligation_id }}">פתיחה</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {{ ui.pagination(page, '/payments?tab=' ~ tab) }}
+  {% else %}
+    <section class="empty-state">
+      <h2>{{ {'open': 'אין תשלומים פתוחים', 'paid': 'עדיין אין תשלומים ששולמו במלואם', 'all': 'עדיין לא נוספו חשבוניות'}[tab] }}</h2>
+      <a href="/invoices/new" class="btn btn-primary">+ חשבונית חדשה</a>
+    </section>
+  {% endif %}
+  <p class="muted small">חיפוש, מסננים ומיון יתווספו בשלב הבא. רשומות ששולמו נשמרות לצמיתות ללא הגבלת תאריך.</p>
+{% endblock %}

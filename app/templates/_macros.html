@@ -1,0 +1,105 @@
+{# Shared UI building blocks. Import with: {% import "_macros.html" as ui %} #}
+
+{# Hidden CSRF field — required in every POST form. #}
+{% macro csrf_field() -%}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+{%- endmacro %}
+
+{# Amount isolated as LTR so digits and the currency symbol never get reordered. #}
+{% macro money(minor, currency) -%}
+  {%- if minor is none -%}
+    <span class="badge badge-missing">{{ he.OBLIGATION_STATES['missing_amount'] }}</span>
+  {%- else -%}
+    <bdi dir="ltr" class="num">{{ minor | money(currency) }}</bdi>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro date(value) -%}
+  {%- if value -%}<bdi dir="ltr" class="num">{{ value | he_date }}</bdi>{%- endif -%}
+{%- endmacro %}
+
+{# Free text that may be English/Latin (supplier names, invoice numbers, references). #}
+{% macro text(value) -%}
+  {%- if value -%}<bdi>{{ value }}</bdi>{%- endif -%}
+{%- endmacro %}
+
+{# Obligation primary state badge. #}
+{% macro state_badge(state) -%}
+  <span class="badge badge-{{ state | replace('_', '-') }}">{{ OBLIGATION_STATES.get(state, state) }}</span>
+{%- endmacro %}
+
+{# Urgency flag badge: overdue / due_today / due_soon / reminder. #}
+{% macro urgency_badge(flag) -%}
+  <span class="badge badge-{{ flag | replace('_', '-') }}">{{ he.URGENCY_FLAGS.get(flag, flag) }}</span>
+{%- endmacro %}
+
+{# Form field wrapper with label, optional hint and Hebrew error message. #}
+{% macro field(name, label, errors=None, required=False, hint=None) -%}
+  {% set err = errors.get(name) if errors else None %}
+  <div class="field{% if err %} has-error{% endif %}">
+    <label for="f-{{ name }}">{{ label }}{% if required %} <span class="req" aria-hidden="true">*</span>{% endif %}</label>
+    {{ caller() }}
+    {% if hint %}<div class="hint">{{ hint }}</div>{% endif %}
+    {% if err %}<div class="field-error" id="f-{{ name }}-error" role="alert">{{ err }}</div>{% endif %}
+  </div>
+{%- endmacro %}
+
+{# Summary of all validation errors at the top of a form. #}
+{% macro error_summary(errors) -%}
+  {% if errors %}
+    <div class="alert alert-danger" role="alert">
+      <strong>לא ניתן לשמור. יש לתקן את השדות הבאים:</strong>
+      <ul>{% for msg in errors.values() %}<li>{{ msg }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+{%- endmacro %}
+
+{# DD/MM/YYYY text field; app.js adds the Hebrew calendar button. Never type="date"
+   (that follows the browser locale and may show MM/DD). #}
+{% macro date_input(name, value='', required=False, describedby=None) -%}
+  <input type="text" class="date-input ltr-input" id="f-{{ name }}" name="{{ name }}" value="{{ value or '' }}"
+         placeholder="DD/MM/YYYY" inputmode="numeric" autocomplete="off" maxlength="10"
+         {% if required %}required{% endif %}>
+{%- endmacro %}
+
+{# Text input bound to values/errors dicts. #}
+{% macro input(name, values, type='text', required=False, ltr=False, extra='') -%}
+  <input type="{{ type }}" id="f-{{ name }}" name="{{ name }}" value="{{ values.get(name, '') or '' }}"
+         {% if ltr %}class="ltr-input"{% endif %} {% if required %}required{% endif %} {{ extra | safe }}>
+{%- endmacro %}
+
+{% macro pagination(page, base_url) -%}
+  {% if page.pages > 1 %}
+    <nav class="pagination" aria-label="דפים">
+      {% if page.page > 1 %}<a class="btn btn-secondary" href="{{ base_url }}&page={{ page.page - 1 }}">הקודם</a>{% endif %}
+      <span>עמוד {{ page.page }} מתוך {{ page.pages }} ({{ page.total }} רשומות)</span>
+      {% if page.page < page.pages %}<a class="btn btn-secondary" href="{{ base_url }}&page={{ page.page + 1 }}">הבא</a>{% endif %}
+    </nav>
+  {% endif %}
+{%- endmacro %}
+
+{# Warnings that need an explicit confirmation checkbox before saving. #}
+{% macro confirm_warnings(warnings) -%}
+  {% if warnings %}
+    <div class="alert alert-warning" role="alert">
+      <strong>{{ he.CONFIRM_WARNINGS_TITLE }}</strong>
+      <ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+      <label class="check"><input type="checkbox" name="confirm_warnings" value="1" required> {{ he.CONFIRM_WARNINGS_LABEL }}</label>
+    </div>
+  {% endif %}
+{%- endmacro %}
+
+{# Kept upload (survives a form error) + file chooser. #}
+{% macro file_field(staged, accept, name='file', token_name='file_token', label='קובץ (PDF / JPG / PNG)', errors=None) -%}
+  {% call field(name, label, errors=errors) %}
+    {% if staged %}
+      <div class="kept-file">{{ he.FILE_KEPT }} <bdi>{{ staged.original_name }}</bdi></div>
+      <input type="hidden" name="{{ token_name }}" value="{{ staged.token }}">
+    {% endif %}
+    <input type="file" id="f-{{ name }}" name="{{ name }}" accept="{{ accept }}">
+  {% endcall %}
+{%- endmacro %}
+
+{% macro alert(kind, message) -%}
+  <div class="alert alert-{{ kind }}" role="{{ 'alert' if kind == 'danger' else 'status' }}">{{ message }}</div>
+{%- endmacro %}
